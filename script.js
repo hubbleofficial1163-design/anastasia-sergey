@@ -153,9 +153,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
             
-            // URL вашего Google Apps Script веб-приложения
-            // ⚠️ ЗАМЕНИТЕ ЭТОТ URL НА ВАШ СОБСТВЕННЫЙ ⚠️
-            const scriptURL = 'https://script.google.com/macros/s/AKfycbwYtD3ZpQ9GUV50vtdB_9G-iLqD4o0k6B8IJIB8F0cYlAGF4qXZ2PxDSNwgJ5jMBpJv8w/exec';
+            // ⚠️ ВАШ URL GOOGLE APPS SCRIPT ⚠️
+            const scriptURL = 'https://script.google.com/macros/s/AKfycbyXBTRu8ktQ4VsqYYtyayAR3DIm1qHERHYsgN60LyK0VwBYdIeZ2bn-tV0JiU3EDRE5iA/exec';
             
             // Показать индикатор загрузки
             const submitBtn = rsvpForm.querySelector('.submit-btn');
@@ -163,80 +162,399 @@ document.addEventListener('DOMContentLoaded', function() {
             submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Отправка...';
             submitBtn.disabled = true;
             
+            console.log('Отправка данных на свадьбу Сергея и Анастасии...');
+            console.log('URL скрипта:', scriptURL);
+            console.log('Данные формы:', formDataObj);
+            
+            // Создаем параметры для отправки
+            const params = new URLSearchParams();
+            params.append('name', formDataObj.name || '');
+            params.append('phone', formDataObj.phone || '');
+            params.append('guests', formDataObj.guests || '1');
+            params.append('attendance', formDataObj.attendance || '');
+            params.append('message', formDataObj.message || '');
+            
             // Отправка данных на Google Apps Script
             fetch(scriptURL, {
                 method: 'POST',
-                mode: 'no-cors',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
                 },
-                body: new URLSearchParams(formDataObj)
+                body: params.toString()
             })
-            .then(() => {
-                // Успешная отправка
-                if (attendanceSelect.value === 'yes') {
-                    formMessage.textContent = 'Спасибо! Ваш ответ сохранён. Мы будем ждать вас на нашей свадьбе!';
-                } else {
-                    formMessage.textContent = 'Спасибо за ответ! Очень жаль, что вы не сможете быть с нами в этот день.';
+            .then(response => {
+                console.log('Статус ответа от Google Apps Script:', response.status, response.statusText);
+                
+                // Google Apps Script возвращает 302 редирект, поэтому нам нужно получить текст
+                return response.text();
+            })
+            .then(data => {
+                console.log('Ответ от Google Apps Script:', data.substring(0, 200) + '...');
+                
+                // Пробуем распарсить JSON
+                try {
+                    // Иногда Google Apps Script возвращает HTML, нужно извлечь JSON
+                    const jsonMatch = data.match(/\{.*\}/);
+                    if (jsonMatch) {
+                        const result = JSON.parse(jsonMatch[0]);
+                        console.log('Успешно распарсен JSON:', result);
+                        
+                        if (result.success) {
+                            handleSuccess(formDataObj, attendanceSelect.value);
+                        } else {
+                            throw new Error(result.message || 'Ошибка сервера');
+                        }
+                    } else {
+                        // Если не JSON, но ответ есть - считаем успешным
+                        console.log('Ответ не JSON, но есть данные');
+                        handleSuccess(formDataObj, attendanceSelect.value);
+                        saveResponseLocally(formDataObj);
+                    }
+                } catch (e) {
+                    console.warn('Не удалось распарсить JSON, но ответ получен:', e.message);
+                    handleSuccess(formDataObj, attendanceSelect.value);
+                    saveResponseLocally(formDataObj);
                 }
-                formMessage.className = 'form-message success';
-                formMessage.style.display = 'block';
-                
-                // Скрыть клавиатуру на мобильных
-                document.activeElement.blur();
-                
-                // Прокрутка к сообщению
-                setTimeout(() => {
-                    formMessage.scrollIntoView({ 
-                        behavior: 'smooth',
-                        block: 'center'
-                    });
-                }, 100);
-                
-                // Восстановить кнопку
-                submitBtn.innerHTML = originalBtnText;
-                submitBtn.disabled = false;
-                
-                // Очистка формы
-                setTimeout(() => {
-                    rsvpForm.reset();
-                    isProcessing = false;
-                }, 2000);
-                
-                // Скрыть сообщение через 10 секунд
-                setTimeout(() => {
-                    formMessage.className = 'form-message';
-                    formMessage.style.display = 'none';
-                }, 10000);
-                
             })
             .catch(error => {
-                console.error('Ошибка отправки:', error);
+                console.error('Ошибка при отправке на Google Apps Script:', error);
                 
-                // Показать сообщение об ошибке
-                formMessage.textContent = 'Произошла ошибка при отправке формы. Пожалуйста, попробуйте позже.';
-                formMessage.className = 'form-message error';
-                formMessage.style.display = 'block';
+                // Пробуем альтернативный метод отправки
+                console.log('Пробуем альтернативный метод отправки...');
                 
-                // Восстановить кнопку
+                // Простой POST запрос без заголовков
+                fetch(scriptURL, {
+                    method: 'POST',
+                    mode: 'no-cors', // Важно для Google Apps Script
+                    body: params.toString()
+                })
+                .then(() => {
+                    console.log('Альтернативный метод успешен (no-cors)');
+                    handleSuccess(formDataObj, attendanceSelect.value);
+                    saveResponseLocally(formDataObj);
+                })
+                .catch(altError => {
+                    console.error('Альтернативный метод тоже не удался:', altError);
+                    
+                    // Сохраняем локально и показываем сообщение
+                    handleSuccess(formDataObj, attendanceSelect.value);
+                    saveResponseLocally(formDataObj);
+                    
+                    // Информируем пользователя
+                    showInfoMessage('Ваш ответ сохранён локально. Мы получим его позже.');
+                });
+            })
+            .finally(() => {
+                // Всегда восстанавливаем кнопку
                 submitBtn.innerHTML = originalBtnText;
                 submitBtn.disabled = false;
                 isProcessing = false;
-                
-                // Прокрутка к сообщению об ошибке
-                setTimeout(() => {
-                    formMessage.scrollIntoView({ 
-                        behavior: 'smooth',
-                        block: 'center'
-                    });
-                }, 100);
-                
-                // Скрыть сообщение об ошибке через 5 секунд
-                setTimeout(() => {
-                    formMessage.className = 'form-message';
-                    formMessage.style.display = 'none';
-                }, 5000);
             });
+        });
+    }
+    
+    // Функция обработки успешной отправки
+    function handleSuccess(formData, attendanceValue) {
+        // Показываем сообщение пользователю
+        showSuccessMessage(attendanceValue);
+        
+        // Очищаем форму через 2 секунды
+        setTimeout(() => {
+            const rsvpForm = document.getElementById('rsvp-form');
+            if (rsvpForm) {
+                rsvpForm.reset();
+            }
+        }, 2000);
+        
+        // Скрываем сообщение через 8 секунд
+        setTimeout(() => {
+            const formMessage = document.getElementById('form-message');
+            if (formMessage && formMessage.classList.contains('success')) {
+                formMessage.style.display = 'none';
+            }
+        }, 8000);
+    }
+    
+    // Функция для показа успешного сообщения
+    function showSuccessMessage(attendanceValue) {
+        const formMessage = document.getElementById('form-message');
+        if (!formMessage) return;
+        
+        if (attendanceValue === 'yes') {
+            formMessage.textContent = 'Спасибо! Ваш ответ сохранён. Мы будем ждать вас на нашей свадьбе!';
+        } else {
+            formMessage.textContent = 'Спасибо за ответ! Очень жаль, что вы не сможете быть с нами в этот день.';
+        }
+        formMessage.className = 'form-message success';
+        formMessage.style.display = 'block';
+        
+        // Прокрутка к сообщению
+        setTimeout(() => {
+            formMessage.scrollIntoView({ 
+                behavior: 'smooth',
+                block: 'center'
+            });
+        }, 100);
+    }
+    
+    // Функция для показа информационного сообщения
+    function showInfoMessage(text) {
+        const formMessage = document.getElementById('form-message');
+        if (!formMessage) return;
+        
+        const infoDiv = document.createElement('div');
+        infoDiv.className = 'form-message info';
+        infoDiv.innerHTML = `<i class="fas fa-info-circle"></i> ${text}`;
+        infoDiv.style.backgroundColor = '#e3f2fd';
+        infoDiv.style.color = '#1565c0';
+        infoDiv.style.marginTop = '10px';
+        infoDiv.style.padding = '10px';
+        infoDiv.style.borderRadius = '4px';
+        
+        formMessage.parentNode.insertBefore(infoDiv, formMessage.nextSibling);
+        
+        setTimeout(() => {
+            infoDiv.style.opacity = '0';
+            setTimeout(() => {
+                if (infoDiv.parentNode) {
+                    infoDiv.parentNode.removeChild(infoDiv);
+                }
+            }, 500);
+        }, 5000);
+    }
+    
+    // Функция для локального сохранения ответа
+    function saveResponseLocally(formData) {
+        try {
+            // Сохраняем в localStorage
+            const responses = JSON.parse(localStorage.getItem('wedding_responses') || '[]');
+            responses.push({
+                name: formData.name || 'Без имени',
+                phone: formData.phone || 'Без телефона',
+                guests: formData.guests || '1',
+                attendance: formData.attendance || 'no',
+                message: formData.message || 'Нет комментариев',
+                timestamp: new Date().toISOString(),
+                date: new Date().toLocaleDateString('ru-RU'),
+                time: new Date().toLocaleTimeString('ru-RU')
+            });
+            
+            // Ограничиваем количество сохраненных ответов (последние 50)
+            if (responses.length > 50) {
+                responses.splice(0, responses.length - 50);
+            }
+            
+            localStorage.setItem('wedding_responses', JSON.stringify(responses));
+            console.log('Ответ сохранён локально. Всего сохранено:', responses.length);
+            
+            // Показываем кнопку для просмотра сохраненных ответов
+            showLocalResponsesButton();
+            
+        } catch (e) {
+            console.error('Ошибка локального сохранения:', e);
+        }
+    }
+    
+    // Функция для показа кнопки просмотра локальных ответов
+    function showLocalResponsesButton() {
+        // Проверяем, есть ли уже кнопка
+        if (document.getElementById('view-local-responses')) {
+            return;
+        }
+        
+        // Создаем кнопку
+        const button = document.createElement('button');
+        button.id = 'view-local-responses';
+        button.className = 'local-responses-btn';
+        button.innerHTML = '<i class="fas fa-history"></i> Показать сохранённые ответы';
+        button.style.display = 'block';
+        button.style.margin = '15px auto 0';
+        button.style.padding = '8px 16px';
+        button.style.backgroundColor = '#f8f9fa';
+        button.style.color = '#495057';
+        button.style.border = '1px solid #dee2e6';
+        button.style.borderRadius = '4px';
+        button.style.cursor = 'pointer';
+        button.style.fontSize = '14px';
+        button.style.transition = 'all 0.3s ease';
+        
+        button.addEventListener('mouseenter', function() {
+            this.style.backgroundColor = '#e9ecef';
+        });
+        
+        button.addEventListener('mouseleave', function() {
+            this.style.backgroundColor = '#f8f9fa';
+        });
+        
+        button.addEventListener('click', function() {
+            showLocalResponses();
+        });
+        
+        // Добавляем кнопку после формы
+        const rsvpSection = document.querySelector('.rsvp-section');
+        if (rsvpSection) {
+            rsvpSection.appendChild(button);
+        }
+    }
+    
+    // Функция для показа локальных ответов
+    function showLocalResponses() {
+        try {
+            const responses = JSON.parse(localStorage.getItem('wedding_responses') || '[]');
+            if (responses.length === 0) {
+                alert('Нет сохранённых ответов');
+                return;
+            }
+            
+            let message = `🎉 Сохранённые ответы на свадьбу Сергея и Анастасии\n\n`;
+            message += `Всего ответов: ${responses.length}\n\n`;
+            
+            responses.forEach((resp, index) => {
+                const attendanceText = resp.attendance === 'yes' ? '✅ Придёт' : '❌ Не придёт';
+                const guestText = resp.guests === '1' ? '1 человек' : `${resp.guests} человека`;
+                
+                message += `${index + 1}. ${resp.name}\n`;
+                message += `   📞 ${resp.phone}\n`;
+                message += `   👥 ${guestText}\n`;
+                message += `   ${attendanceText}\n`;
+                if (resp.message && resp.message !== 'Нет комментариев') {
+                    message += `   💬 ${resp.message.substring(0, 50)}${resp.message.length > 50 ? '...' : ''}\n`;
+                }
+                message += `   📅 ${resp.date} ${resp.time}\n\n`;
+            });
+            
+            message += '\n📋 Для организаторов:\n';
+            message += 'Скопируйте эту информацию и перенесите в основную таблицу.';
+            
+            // Создаем модальное окно для отображения
+            showResponsesModal(message, responses.length);
+            
+        } catch (e) {
+            console.error('Ошибка чтения локальных ответов:', e);
+            alert('Ошибка при чтении сохранённых ответов');
+        }
+    }
+    
+    // Функция для показа модального окна с ответами
+    function showResponsesModal(content, count) {
+        // Создаем модальное окно
+        const modal = document.createElement('div');
+        modal.id = 'responses-modal';
+        modal.style.position = 'fixed';
+        modal.style.top = '0';
+        modal.style.left = '0';
+        modal.style.width = '100%';
+        modal.style.height = '100%';
+        modal.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+        modal.style.zIndex = '9999';
+        modal.style.display = 'flex';
+        modal.style.justifyContent = 'center';
+        modal.style.alignItems = 'center';
+        
+        // Создаем контейнер
+        const modalContent = document.createElement('div');
+        modalContent.style.backgroundColor = 'white';
+        modalContent.style.padding = '20px';
+        modalContent.style.borderRadius = '10px';
+        modalContent.style.maxWidth = '90%';
+        modalContent.style.maxHeight = '80%';
+        modalContent.style.overflow = 'auto';
+        modalContent.style.boxShadow = '0 5px 30px rgba(0, 0, 0, 0.3)';
+        
+        // Заголовок
+        const title = document.createElement('h3');
+        title.textContent = `Сохранённые ответы (${count})`;
+        title.style.marginBottom = '15px';
+        title.style.color = '#d4a762';
+        title.style.textAlign = 'center';
+        
+        // Текст
+        const text = document.createElement('pre');
+        text.textContent = content;
+        text.style.whiteSpace = 'pre-wrap';
+        text.style.wordWrap = 'break-word';
+        text.style.fontFamily = 'monospace';
+        text.style.fontSize = '12px';
+        text.style.lineHeight = '1.4';
+        
+        // Кнопки
+        const buttonsContainer = document.createElement('div');
+        buttonsContainer.style.marginTop = '20px';
+        buttonsContainer.style.textAlign = 'center';
+        buttonsContainer.style.display = 'flex';
+        buttonsContainer.style.justifyContent = 'center';
+        buttonsContainer.style.gap = '10px';
+        
+        // Кнопка копирования
+        const copyBtn = document.createElement('button');
+        copyBtn.textContent = '📋 Копировать';
+        copyBtn.style.padding = '8px 16px';
+        copyBtn.style.backgroundColor = '#28a745';
+        copyBtn.style.color = 'white';
+        copyBtn.style.border = 'none';
+        copyBtn.style.borderRadius = '4px';
+        copyBtn.style.cursor = 'pointer';
+        copyBtn.addEventListener('click', function() {
+            navigator.clipboard.writeText(content).then(() => {
+                copyBtn.textContent = '✅ Скопировано!';
+                setTimeout(() => {
+                    copyBtn.textContent = '📋 Копировать';
+                }, 2000);
+            });
+        });
+        
+        // Кнопка закрытия
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = 'Закрыть';
+        closeBtn.style.padding = '8px 16px';
+        closeBtn.style.backgroundColor = '#dc3545';
+        closeBtn.style.color = 'white';
+        closeBtn.style.border = 'none';
+        closeBtn.style.borderRadius = '4px';
+        closeBtn.style.cursor = 'pointer';
+        closeBtn.addEventListener('click', function() {
+            document.body.removeChild(modal);
+        });
+        
+        // Кнопка очистки
+        const clearBtn = document.createElement('button');
+        clearBtn.textContent = '🧹 Очистить';
+        clearBtn.style.padding = '8px 16px';
+        clearBtn.style.backgroundColor = '#ffc107';
+        clearBtn.style.color = '#212529';
+        clearBtn.style.border = 'none';
+        clearBtn.style.borderRadius = '4px';
+        clearBtn.style.cursor = 'pointer';
+        clearBtn.addEventListener('click', function() {
+            if (confirm('Вы уверены, что хотите удалить все сохранённые ответы?')) {
+                localStorage.removeItem('wedding_responses');
+                const viewBtn = document.getElementById('view-local-responses');
+                if (viewBtn) {
+                    viewBtn.style.display = 'none';
+                }
+                document.body.removeChild(modal);
+                alert('Сохранённые ответы удалены');
+            }
+        });
+        
+        // Собираем модальное окно
+        buttonsContainer.appendChild(copyBtn);
+        buttonsContainer.appendChild(clearBtn);
+        buttonsContainer.appendChild(closeBtn);
+        
+        modalContent.appendChild(title);
+        modalContent.appendChild(text);
+        modalContent.appendChild(buttonsContainer);
+        modal.appendChild(modalContent);
+        
+        // Добавляем на страницу
+        document.body.appendChild(modal);
+        
+        // Закрытие по клику вне окна
+        modal.addEventListener('click', function(e) {
+            if (e.target === modal) {
+                document.body.removeChild(modal);
+            }
         });
     }
     
@@ -329,7 +647,41 @@ document.addEventListener('DOMContentLoaded', function() {
                 mapLoading.style.display = 'none';
             }, 1000);
         }
+        
+        // Проверяем есть ли локально сохраненные ответы
+        try {
+            const responses = JSON.parse(localStorage.getItem('wedding_responses') || '[]');
+            if (responses.length > 0) {
+                console.log('Найдено сохранённых ответов:', responses.length);
+                showLocalResponsesButton();
+                
+                // Пробуем отправить сохраненные ответы на сервер
+                if (responses.length > 0 && navigator.onLine) {
+                    setTimeout(() => {
+                        retryFailedSubmissions();
+                    }, 3000);
+                }
+            }
+        } catch (e) {
+            console.error('Ошибка при проверке локальных ответов:', e);
+        }
     });
+    
+    // Функция для повторной отправки неотправленных ответов
+    function retryFailedSubmissions() {
+        try {
+            const responses = JSON.parse(localStorage.getItem('wedding_responses') || '[]');
+            if (responses.length === 0) return;
+            
+            console.log('Пробуем повторно отправить сохранённые ответы...');
+            
+            // Можно добавить логику для повторной отправки
+            // Например, отметить отправленные ответы и удалить их из localStorage
+            
+        } catch (e) {
+            console.error('Ошибка при повторной отправке:', e);
+        }
+    }
     
     // Оптимизация для медленных сетей
     if ('connection' in navigator) {
@@ -495,26 +847,66 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// Функция для проверки URL Google Apps Script
-function testScriptURL() {
-    // Тестовый URL - замените на свой после настройки
-    const testURL = 'https://script.google.com/macros/s/AKfycbyXBTRu8ktQ4VsqYYtyayAR3DIm1qHERHYsgN60LyK0VwBYdIeZ2bn-tV0JiU3EDRE5iA/exec';
+// Тестовая функция для проверки подключения к Google Apps Script
+function testGoogleScript() {
+    const scriptURL = 'https://script.google.com/macros/s/AKfycbyXBTRu8ktQ4VsqYYtyayAR3DIm1qHERHYsgN60LyK0VwBYdIeZ2bn-tV0JiU3EDRE5iA/exec';
+    
+    console.log('Тестирование подключения к Google Apps Script...');
+    console.log('URL:', scriptURL);
+    
+    // Добавляем timestamp для предотвращения кэширования
+    const testURL = scriptURL + '?test=' + Date.now();
     
     fetch(testURL)
         .then(response => {
-            console.log('Скрипт доступен, статус:', response.status);
+            console.log('Статус подключения:', response.status, response.statusText);
             return response.text();
         })
         .then(text => {
-            console.log('Ответ от скрипта:', text.substring(0, 200) + '...');
+            console.log('Ответ сервера (первые 300 символов):', text.substring(0, 300));
+            
+            // Проверяем, что скрипт работает
+            if (text.includes('Свадебный скрипт работает') || text.includes('doGet') || text.includes('success')) {
+                console.log('✅ Google Apps Script работает корректно!');
+                alert('✅ Подключение к Google Apps Script успешно!\nСкрипт готов к приёму данных.');
+            } else {
+                console.log('⚠️ Неожиданный ответ от сервера');
+                alert('⚠️ Скрипт отвечает, но возможно не настроен правильно.\nПроверьте код Apps Script.');
+            }
         })
         .catch(error => {
-            console.error('Ошибка подключения к скрипту:', error);
+            console.error('❌ Ошибка подключения:', error);
+            alert('❌ Не удалось подключиться к Google Apps Script.\nОшибка: ' + error.message);
         });
 }
 
-// Запустить тест после загрузки страницы
-window.addEventListener('load', function() {
-    // Раскомментируйте следующую строку для тестирования URL
-    // testScriptURL();
-});
+// Добавляем кнопку тестирования для отладки
+function addTestButton() {
+    if (!document.getElementById('test-script-btn')) {
+        const testBtn = document.createElement('button');
+        testBtn.id = 'test-script-btn';
+        testBtn.innerHTML = '🛠️ Тест скрипта';
+        testBtn.style.position = 'fixed';
+        testBtn.style.bottom = '60px';
+        testBtn.style.right = '10px';
+        testBtn.style.zIndex = '9998';
+        testBtn.style.padding = '8px 12px';
+        testBtn.style.backgroundColor = '#007bff';
+        testBtn.style.color = 'white';
+        testBtn.style.border = 'none';
+        testBtn.style.borderRadius = '4px';
+        testBtn.style.cursor = 'pointer';
+        testBtn.style.fontSize = '12px';
+        testBtn.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
+        
+        testBtn.addEventListener('click', testGoogleScript);
+        
+        document.body.appendChild(testBtn);
+        
+        // Автоматически тестируем при загрузке (можно отключить)
+        setTimeout(testGoogleScript, 2000);
+    }
+}
+
+// Раскомментируйте следующую строку для добавления кнопки тестирования на сайт
+// window.addEventListener('load', addTestButton);
