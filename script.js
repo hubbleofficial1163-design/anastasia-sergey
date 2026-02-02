@@ -153,8 +153,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
             
-            // ⚠️ ВАШ URL GOOGLE APPS SCRIPT ⚠️
-            const scriptURL = 'https://script.google.com/macros/s/AKfycbyXBTRu8ktQ4VsqYYtyayAR3DIm1qHERHYsgN60LyK0VwBYdIeZ2bn-tV0JiU3EDRE5iA/exec';
+            // ⚠️ ВАШ URL GOOGLE  SCRIPT ⚠️
+            const scriptURL = 'https://script.google.com/macros/s/AKfycbwF-sZzbU_LtVUfkjHMb3CxYjAxlVQfl8HoXXbG15gg7ftDgSvFei1sKsJzphokoIZv/exec';
             
             // Показать индикатор загрузки
             const submitBtn = rsvpForm.querySelector('.submit-btn');
@@ -910,3 +910,4 @@ function addTestButton() {
 
 // Раскомментируйте следующую строку для добавления кнопки тестирования на сайт
 // window.addEventListener('load', addTestButton);
+
